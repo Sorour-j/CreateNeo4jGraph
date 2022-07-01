@@ -22,6 +22,7 @@ import org.neo4j.io.fs.FileUtils;
 import org.atlanmod.commons.cache.Cache;
 import org.atlanmod.commons.cache.CacheBuilder;
 import org.eclipse.emf.common.util.EList;
+import org.eclipse.emf.common.util.TreeIterator;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EAttribute;
 import org.eclipse.emf.ecore.EClass;
@@ -37,15 +38,13 @@ import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 import static org.neo4j.configuration.GraphDatabaseSettings.DEFAULT_DATABASE_NAME;
 
 public class CreateGraph {
-	
-	
-	private Cache<String, Node> cache = CacheBuilder.builder()
-			.softValues()
-			.build();
-	
+
+	private Cache<String, Node> cache = CacheBuilder.builder().softValues().build();
+
+	private Cache<Object, Node> visitedObjects = CacheBuilder.builder().softValues().build();
+
 	private static final String resourceName = "./resources/Grabats-set3.xmi";
 	private static final String metamodel = "./resources/JDTAST.ecore";
-
 
 	private static Path databaseDirectory = null;
 	ResourceSet xmiResourceSet = new ResourceSetImpl();
@@ -53,11 +52,10 @@ public class CreateGraph {
 	Resource resource;
 	ArrayList<String> className = new ArrayList<String>();
 	ArrayList<String> refName = new ArrayList<String>();
-	//HashMap<String,Node> types = new HashMap<String,Node>();
-	
+	// HashMap<String,Node> types = new HashMap<String,Node>();
+
 	public String greeting;
-	HashMap<Object, Node> visitedObjects = new HashMap<Object, Node>();
-	
+
 	// tag::vars[]
 	GraphDatabaseService graphDb;
 	Node firstNode;
@@ -67,158 +65,131 @@ public class CreateGraph {
 	private DatabaseManagementService managementService;
 	// end::vars[]
 
-
-	
 	// tag::createReltype[]
 //	private enum RelTypes implements RelationshipType {
 //		KNOWS
 //	}
 	// end::createReltype[]
-	
+
 	public static void main(final String[] args) throws IOException {
 		CreateGraph hello = new CreateGraph();
-		
-	//	String EcoreMetamodel = args[0];
+
+		// String EcoreMetamodel = args[0];
 //		String XmiModel = args[1];
 		String db = "target/Grabats-set3";
 		databaseDirectory = Paths.get(db);
 		hello.RegisterEcore(metamodel);
-	//	hello.RegisterEcore(EcoreMetamodel);
-	//	hello.loadXmi(XmiModel);
+		// hello.RegisterEcore(EcoreMetamodel);
+		// hello.loadXmi(XmiModel);
 		hello.loadXmi(resourceName);
-		//hello.printInfo();
+		// hello.printInfo();
 		hello.createDb();
 		System.out.print("Return");
-		//hello.removeData();
+		// hello.removeData();
 		hello.shutDown();
 	}
 
 	void createDb() throws IOException {
-	//	FileUtils.deleteDirectory(databaseDirectory);
+		// FileUtils.deleteDirectory(databaseDirectory);
 		Node s, t, type;
 		// tag::startDb[]
 		System.out.println("Starting database ...");
-		 managementService = new DatabaseManagementServiceBuilder( databaseDirectory )
-			    .setConfig( BoltConnector.enabled, true )
-			    .setConfig( HttpConnector.enabled, true )
-			    .setConfig( BoltConnector.listen_address, new SocketAddress( "localhost", 7687 ) )
-			    .build();
-		 
-		
+		managementService = new DatabaseManagementServiceBuilder(databaseDirectory)
+				.setConfig(BoltConnector.enabled, true).setConfig(HttpConnector.enabled, true)
+				.setConfig(BoltConnector.listen_address, new SocketAddress("localhost", 7687)).build();
+
 		graphDb = managementService.database(DEFAULT_DATABASE_NAME);
-	//	registerShutdownHook(managementService);
+		// registerShutdownHook(managementService);
 		// end::startDb[]
 		System.out.println("Starting graph creation ...");
 		RelType rel = new RelType();
 		RelType relType = new RelType();
 		try (Transaction tx = graphDb.beginTx()) {
 
-			EList<EObject> objects = resource.getContents();
-			while (!objects.isEmpty()) {
-				EObject obj = objects.get(0);
-				
-				if (obj == null) 
-					return;
-				
-				objects.remove(obj);
-				if (!obj.eContents().isEmpty())
-					objects.addAll(obj.eContents());
-				
+			// EList<EObject> objects = resource.getContents();
+
+			TreeIterator<EObject> it = resource.getAllContents();
+
+			while (it.hasNext()) {
+				EObject obj = it.next();
+
 				String name = obj.eClass().getName();
 
 				if (className.contains(name)) {
-					
-				
-					if (!visitedObjects.keySet().contains(obj)) {
+
+					if (!visitedObjects.contains(obj)) {
 						s = tx.createNode();
 						s = setPros(obj, s);
-						
+
 						if (!cache.contains(name)) {
 							type = tx.createNode();
 							type.setProperty("name", name);
-							cache.put(name,type);
-						}
-						else
+							cache.put(name, type);
+						} else
 							type = cache.get(name);
-						
-							relType.setName("instanceOf");
-							s.createRelationshipTo(type, relType);
-						
-						visitedObjects.put(obj,s);
-					}
-					else
+
+						relType.setName("instanceOf");
+						s.createRelationshipTo(type, relType);
+
+						visitedObjects.put(obj, s);
+					} else
 						s = visitedObjects.get(obj);
 
 					for (EReference ref : obj.eClass().getEAllReferences()) {
-						Object f =  obj.eGet(ref);
-						
+						Object f = obj.eGet(ref);
+
 						if (f != null) {
-						rel.setName(ref.getName());
-						ArrayList<EObject> refs = new ArrayList<EObject>();
-						if (f instanceof Collection)
-							refs.addAll((Collection<EObject>)f);
-						else
-							refs.add((EObject) f);
-						
-						for (EObject r : refs) {
-							
-							if (!visitedObjects.keySet().contains(r)) {
-								t = tx.createNode();
-								t = setPros(r, t);
-								
-								if (!cache.contains(r.eClass().getName())) {
-									type = tx.createNode();
-									type.setProperty("name", r.eClass().getName());
-						
-									cache.put(r.eClass().getName(),type);
-								}
-								else
-									type = cache.get(r.eClass().getName());
-								
-								relType.setName("instanceOf");
-								t.createRelationshipTo(type, relType);
-								
-//								for (EClass c : r.eClass().getEAllSuperTypes()) {
-//									
-//									if (!types.containsKey(c.getName())) {
-//										type = tx.createNode();
-//										type.setProperty("name", c.getName());
-//										types.put(c.getName(),type);
-//									}
-//									else
-//										type = types.get(c.getName());
-//								
-//									relType.setName("subclassOf");
-//									t.createRelationshipTo(type, relType);
-//								}
-							}
+							rel.setName(ref.getName());
+							ArrayList<EObject> refs = new ArrayList<EObject>();
+							if (f instanceof Collection)
+								refs.addAll((Collection<EObject>) f);
 							else
-								t = visitedObjects.get(r);
-							
-							s.createRelationshipTo(t, rel);
-							visitedObjects.put(r,t);
-						}
+								refs.add((EObject) f);
+
+							for (EObject r : refs) {
+
+								if (!visitedObjects.contains(r)) {
+									t = tx.createNode();
+									t = setPros(r, t);
+
+									if (!cache.contains(r.eClass().getName())) {
+										System.out.print('.');
+										type = tx.createNode();
+										type.setProperty("name", r.eClass().getName());
+
+										cache.put(r.eClass().getName(), type);
+									} else
+										type = cache.get(r.eClass().getName());
+
+									relType.setName("instanceOf");
+									t.createRelationshipTo(type, relType);
+								} else
+									t = visitedObjects.get(r);
+
+								s.createRelationshipTo(t, rel);
+								visitedObjects.put(r, t);
+							}
 						}
 					}
 				}
-				
+
 			}
 			System.out.println("End!!..");
-			
+
 			// tag::transaction[]
 			tx.commit();
 		}
 		// end::transaction[]
 	}
 
-	Node setPros(EObject obj,Node s) {
-		
+	Node setPros(EObject obj, Node s) {
+
 		for (EAttribute atr : obj.eClass().getEAllAttributes()) {
-			
+
 			if (obj.eGet(atr) != null)
-				s.setProperty(atr.getName(),obj.eGet(atr).toString());
+				s.setProperty(atr.getName(), obj.eGet(atr).toString());
 		}
-		
+
 		s.addLabel(new org.neo4j.graphdb.Label() {
 
 			@Override
@@ -227,18 +198,17 @@ public class CreateGraph {
 			}
 		});
 		for (EClass c : obj.eClass().getEAllSuperTypes()) {
-		
-		s.addLabel(new org.neo4j.graphdb.Label() {
 
-			@Override
-			public String name() {
-				return c.getName();
-			}
-		});
+			s.addLabel(new org.neo4j.graphdb.Label() {
+
+				@Override
+				public String name() {
+					return c.getName();
+				}
+			});
 		}
 		return s;
 	}
-	
 
 	void shutDown() {
 		System.out.println();
@@ -273,7 +243,7 @@ public class CreateGraph {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-	
+
 		for (EObject o : ecoreResource.getContents()) {
 			EPackage ePackage = (EPackage) o;
 			xmiResourceSet.getPackageRegistry().put(ePackage.getNsURI(), ePackage);
@@ -296,51 +266,50 @@ public class CreateGraph {
 		}
 		System.out.println("Loading done!......");
 	}
-	
+
 	void printInfo() {
-		
+
 		EList<EObject> objects = resource.getContents();
 		while (!objects.isEmpty()) {
 			EObject obj = objects.get(0);
-			
-			if (obj == null) 
+
+			if (obj == null)
 				return;
-			
+
 			objects.remove(obj);
 			if (!obj.eContents().isEmpty())
 				objects.addAll(obj.eContents());
 
 			String name = obj.eClass().getName();
-			
+
 			System.out.println("Label: " + obj.eClass().getName());
-			if(obj.eClass().getName().equals("ClassDeclaration")) {
-			for (EAttribute atr : obj.eClass().getEAllAttributes()) {
-				//String value = obj.eGet(atr).toString();
-				if (obj.eGet(atr) != null)
-					System.out.println("Attr Name: "+ atr.getName() +" Attr value: " + obj.eGet(atr).toString());
-			}
-			for (EReference ref : obj.eClass().getEAllReferences()) {
-				Object f =  obj.eGet(ref);
-				System.out.println("Relationship Type: " + ref.getName());
-				if (f != null) {
-		
-				ArrayList<EObject> refs = new ArrayList<EObject>();
-				
-				if (f instanceof Collection)
-					refs.addAll((Collection<EObject>)f);
-				else
-					refs.add((EObject) f);
-				
-				for (EObject r : refs) {
-					 System.out.println("Value Rel : " + r);
+			if (obj.eClass().getName().equals("ClassDeclaration")) {
+				for (EAttribute atr : obj.eClass().getEAllAttributes()) {
+					// String value = obj.eGet(atr).toString();
+					if (obj.eGet(atr) != null)
+						System.out.println("Attr Name: " + atr.getName() + " Attr value: " + obj.eGet(atr).toString());
 				}
+				for (EReference ref : obj.eClass().getEAllReferences()) {
+					Object f = obj.eGet(ref);
+					System.out.println("Relationship Type: " + ref.getName());
+					if (f != null) {
+
+						ArrayList<EObject> refs = new ArrayList<EObject>();
+
+						if (f instanceof Collection)
+							refs.addAll((Collection<EObject>) f);
+						else
+							refs.add((EObject) f);
+
+						for (EObject r : refs) {
+							System.out.println("Value Rel : " + r);
+						}
+					} else
+						System.out.println("Value Rel : Null");
 				}
-				else
-					 System.out.println("Value Rel : Null");	
 			}
-	}
 		}
-}
+	}
 //	void printGraph() {
 //		for(Node n : nodes) {
 //			System.out.println(n + ":::"+ n.getAllProperties());
