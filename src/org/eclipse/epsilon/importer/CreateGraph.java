@@ -1,3 +1,4 @@
+package org.eclipse.epsilon.importer;
 
 import java.io.File;
 import java.io.IOException;
@@ -18,8 +19,8 @@ import org.neo4j.graphdb.Node;
 import org.neo4j.graphdb.Relationship;
 import org.neo4j.graphdb.Transaction;
 import org.neo4j.io.fs.FileUtils;
-
-
+import org.atlanmod.commons.cache.Cache;
+import org.atlanmod.commons.cache.CacheBuilder;
 import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.common.util.URI;
 import org.eclipse.emf.ecore.EAttribute;
@@ -36,6 +37,15 @@ import org.eclipse.emf.ecore.xmi.impl.XMIResourceFactoryImpl;
 import static org.neo4j.configuration.GraphDatabaseSettings.DEFAULT_DATABASE_NAME;
 
 public class CreateGraph {
+	
+	
+	private Cache<String, Node> cache = CacheBuilder.builder()
+			.softValues()
+			.build();
+	
+	private static final String resourceName = "./resources/Grabats-set3.xmi";
+	private static final String metamodel = "./resources/JDTAST.ecore";
+
 
 	private static Path databaseDirectory = null;
 	ResourceSet xmiResourceSet = new ResourceSetImpl();
@@ -43,7 +53,7 @@ public class CreateGraph {
 	Resource resource;
 	ArrayList<String> className = new ArrayList<String>();
 	ArrayList<String> refName = new ArrayList<String>();
-	HashMap<String,Node> types = new HashMap<String,Node>();
+	//HashMap<String,Node> types = new HashMap<String,Node>();
 	
 	public String greeting;
 	HashMap<Object, Node> visitedObjects = new HashMap<Object, Node>();
@@ -56,6 +66,8 @@ public class CreateGraph {
 	ArrayList<RelType> refs = new ArrayList<RelType>();
 	private DatabaseManagementService managementService;
 	// end::vars[]
+
+
 	
 	// tag::createReltype[]
 //	private enum RelTypes implements RelationshipType {
@@ -70,10 +82,10 @@ public class CreateGraph {
 //		String XmiModel = args[1];
 		String db = "target/Grabats-set3";
 		databaseDirectory = Paths.get(db);
-		hello.RegisterEcore("/Users/sorourjahanbin/git/mainandstaticanalysis/org.eclipse.epsilon.neo4j/model/JDTAST.ecore");
+		hello.RegisterEcore(metamodel);
 	//	hello.RegisterEcore(EcoreMetamodel);
 	//	hello.loadXmi(XmiModel);
-		hello.loadXmi("/Users/sorourjahanbin/git/mainandstaticanalysis/org.eclipse.epsilon.neo4j/model/Grabats-set3.xmi");
+		hello.loadXmi(resourceName);
 		//hello.printInfo();
 		hello.createDb();
 		System.out.print("Return");
@@ -121,13 +133,13 @@ public class CreateGraph {
 						s = tx.createNode();
 						s = setPros(obj, s);
 						
-						if (!types.containsKey(name)) {
+						if (!cache.contains(name)) {
 							type = tx.createNode();
 							type.setProperty("name", name);
-							types.put(name,type);
+							cache.put(name,type);
 						}
 						else
-							type = types.get(name);
+							type = cache.get(name);
 						
 							relType.setName("instanceOf");
 							s.createRelationshipTo(type, relType);
@@ -154,14 +166,14 @@ public class CreateGraph {
 								t = tx.createNode();
 								t = setPros(r, t);
 								
-								if (!types.containsKey(r.eClass().getName())) {
+								if (!cache.contains(r.eClass().getName())) {
 									type = tx.createNode();
 									type.setProperty("name", r.eClass().getName());
 						
-									types.put(r.eClass().getName(),type);
+									cache.put(r.eClass().getName(),type);
 								}
 								else
-									type = types.get(r.eClass().getName());
+									type = cache.get(r.eClass().getName());
 								
 								relType.setName("instanceOf");
 								t.createRelationshipTo(type, relType);

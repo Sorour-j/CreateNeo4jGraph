@@ -1,3 +1,4 @@
+package org.eclipse.epsilon.importer;
 
 public class RelType implements org.neo4j.graphdb.RelationshipType {
 
